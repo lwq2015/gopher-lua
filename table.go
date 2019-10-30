@@ -144,7 +144,7 @@ func (tb *LTable) RawSet(key LValue, value LValue) {
 			index := int(v) - 1
 			alen := len(tb.array)
 			switch {
-			case index > alen:
+			case index >= alen:
 				if index >= cap(tb.array) {
 					tb.resize(v)
 					alen = len(tb.array)
@@ -401,6 +401,10 @@ func (tb *LTable) RawGet(key LValue) LValue {
 			}
 			index := int(v) - 1
 			if index >= len(tb.array) {
+				value, ok := tb.dict[v]
+				if ok {
+					return value
+				}
 				return LNil
 			}
 			return tb.array[index]
@@ -430,6 +434,10 @@ func (tb *LTable) RawGetInt(key int) LValue {
 	}
 	index := int(key) - 1
 	if index >= len(tb.array) || index < 0 {
+		v, ok := tb.dict[LNumber(key)]
+		if ok {
+			return v
+		}
 		return LNil
 	}
 	return tb.array[index]

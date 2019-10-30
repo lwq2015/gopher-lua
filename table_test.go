@@ -189,6 +189,8 @@ func TestTableForEach(t *testing.T) {
 
 func TestTableBigKey(t *testing.T) {
 	tbl := newLTable(0, 0)
+	tbl.RawSetInt(1, LString("1"))
+	errorIfNotEqual(t, LString("1"), tbl.RawGetInt(1))
 	tbl.RawSetInt(67, LString("67")) // in dic
 	errorIfNotEqual(t, LString("67"), tbl.RawGetH(LNumber(67)))
 
