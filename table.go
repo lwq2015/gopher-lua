@@ -144,9 +144,19 @@ func (tb *LTable) RawSet(key LValue, value LValue) {
 			index := int(v) - 1
 			alen := len(tb.array)
 			switch {
-			case index == alen:
-				tb.array = append(tb.array, value)
 			case index > alen:
+				if index >= cap(tb.array) {
+					tb.resize(v)
+					alen = len(tb.array)
+					if index > cap(tb.array) {
+						tb.RawSetH(v, value)
+						break
+					} else if index < alen {
+						tb.array[index] = value
+						break
+					}
+				}
+
 				for i := 0; i < (index - alen); i++ {
 					tb.array = append(tb.array, LNil)
 				}
@@ -164,6 +174,140 @@ func (tb *LTable) RawSet(key LValue, value LValue) {
 	tb.RawSetH(key, value)
 }
 
+func ceillog2(x int) int {
+	var log2 = [256]byte{
+		0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+		6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+		7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+		7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+		8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+		8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+		8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+		8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+	}
+	l := int(0)
+	x--
+	for x >= 256 {
+		l += 8
+		x >>= 8
+	}
+	return l + int(log2[x])
+}
+
+func (tb *LTable) countInt(key LNumber, nums []uint) uint {
+	if !isArrayKey(key) {
+		return 0
+	}
+	nums[ceillog2(int(key))]++
+	return 1
+}
+
+func (tb *LTable) numUseArray(nums []uint) uint {
+	i := 1
+	ause := uint(0)
+	for lg, ttlg := 0, 1; lg < 26; lg, ttlg = lg+1, ttlg*2 {
+		lc := uint(0)
+		lim := ttlg
+		if lim > len(tb.array) {
+			lim = len(tb.array)
+			if i > lim {
+				break
+			}
+		}
+		for ; i <= lim; i++ {
+			if tb.array[i-1] != LNil {
+				lc++
+			}
+		}
+
+		nums[lg] += lc
+		ause += lc
+	}
+	return ause
+}
+
+func (tb *LTable) numUseHash(nums []uint) (totaluse, ause uint) {
+	for k, v := range tb.dict {
+		if v == LNil {
+			continue
+		}
+		totaluse++
+
+		kNumber, ok := k.(LNumber)
+		if !ok {
+			continue
+		}
+
+		ause += tb.countInt(kNumber, nums)
+	}
+	return
+}
+
+func computeSizes(nums []uint, narray *uint) uint {
+	a := uint(0)  /* number of elements smaller than 2^i */
+	na := uint(0) /* number of elements to go to array part */
+	n := uint(0)  /* optimal size for array part */
+	for i, twotoi := 0, uint(1); twotoi/2 < *narray; i, twotoi = i+1, twotoi*2 {
+		if nums[i] > 0 {
+			a += nums[i]
+			if a > twotoi/2 {
+				n = twotoi
+				na = a
+			}
+		}
+		if a == *narray {
+			break
+		}
+	}
+	*narray = n
+	return na
+}
+
+func (tb *LTable) resize(exKey LNumber) {
+	nums := [26]uint{}
+	nasize := tb.numUseArray(nums[:])
+	totaluse := nasize
+	tu, au := tb.numUseHash(nums[:])
+	totaluse += tu
+	nasize += au
+	/* count extra key */
+	nasize += tb.countInt(exKey, nums[:])
+	totaluse++
+	na := computeSizes(nums[:], &nasize)
+
+	if int(na) <= cap(tb.array) {
+		for i := int(na); i < len(tb.array); i++ {
+			if tb.array[i] != LNil {
+				tb.RawSetInt(i+1, tb.array[i])
+			}
+		}
+	} else {
+		oldArray := tb.array
+		tb.array = make([]LValue, len(oldArray), nasize)
+		copy(tb.array, oldArray)
+		var shouldRemove []LValue
+		for k, v := range tb.dict {
+			kNumber, ok := k.(LNumber)
+			if !ok {
+				continue
+			}
+			if !isArrayKey(kNumber) {
+				continue
+			}
+			kInt := int(kNumber)
+			if kInt < 1 || kInt >= cap(tb.array) {
+				continue
+			}
+			tb.RawSetInt(kInt, v)
+			shouldRemove = append(shouldRemove, k)
+		}
+		for _, k := range shouldRemove {
+			delete(tb.dict, k)
+		}
+	}
+
+}
+
 // RawSetInt sets a given LValue at a position `key` without the __newindex metamethod.
 func (tb *LTable) RawSetInt(key int, value LValue) {
 	if key < 1 || key >= MaxArrayIndex {
@@ -176,9 +320,19 @@ func (tb *LTable) RawSetInt(key int, value LValue) {
 	index := key - 1
 	alen := len(tb.array)
 	switch {
-	case index == alen:
-		tb.array = append(tb.array, value)
-	case index > alen:
+	case index >= alen:
+		if index >= cap(tb.array) {
+			tb.resize(LNumber(key))
+			alen = len(tb.array)
+			if index > cap(tb.array) {
+				tb.RawSetH(LNumber(key), value)
+				break
+			} else if index < alen {
+				tb.array[index] = value
+				break
+			}
+		}
+
 		for i := 0; i < (index - alen); i++ {
 			tb.array = append(tb.array, LNil)
 		}

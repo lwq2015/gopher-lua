@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"strconv"
 	"testing"
 )
 
@@ -184,4 +185,22 @@ func TestTableForEach(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestTableBigKey(t *testing.T) {
+	tbl := newLTable(0, 0)
+	tbl.RawSetInt(67, LString("67")) // in dic
+	errorIfNotEqual(t, LString("67"), tbl.RawGetH(LNumber(67)))
+
+	for i := 0; i < 64; i++ {
+		tbl.RawSetInt(i, LString(strconv.Itoa(i))) // in array, except 0
+	}
+	tbl.RawSetInt(10086, LString("10086")) // in dic
+	errorIfNotEqual(t, LString("10086"), tbl.RawGetH(LNumber(10086)))
+
+	tbl.RawSetInt(65, LString("65")) // in array, and will move 67 in to array
+	errorIfNotEqual(t, LString("65"), tbl.RawGetInt(65))
+	errorIfNotEqual(t, LString("67"), tbl.RawGetInt(67))
+	tbl.RawSetInt(66, LString("66")) // in array
+	errorIfNotEqual(t, LString("66"), tbl.RawGetInt(66))
 }
