@@ -194,7 +194,7 @@ func ceillog2(x int) int {
 	return l + int(log2[x])
 }
 
-func (tb *LTable) countInt(key LNumber, nums []uint) uint {
+func countInt(key LNumber, nums []uint) uint {
 	if !isArrayKey(key) {
 		return 0
 	}
@@ -238,7 +238,7 @@ func (tb *LTable) numUseHash(nums []uint) (totaluse, ause uint) {
 			continue
 		}
 
-		ause += tb.countInt(kNumber, nums)
+		ause += countInt(kNumber, nums)
 	}
 	return
 }
@@ -271,7 +271,7 @@ func (tb *LTable) resize(exKey LNumber) {
 	totaluse += tu
 	nasize += au
 	/* count extra key */
-	nasize += tb.countInt(exKey, nums[:])
+	nasize += countInt(exKey, nums[:])
 	totaluse++
 	na := computeSizes(nums[:], &nasize)
 
