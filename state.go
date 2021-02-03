@@ -1368,6 +1368,10 @@ func NewState(opts ...Options) *LState {
 	return ls
 }
 
+func (ls *LState) IsClosed() bool {
+	return ls.stack == nil
+}
+
 func (ls *LState) Close() {
 	atomic.AddInt32(&ls.stop, 1)
 	for _, file := range ls.G.tempFiles {
@@ -2200,7 +2204,7 @@ func (ls *LState) SetMx(mx int) {
 	go func() {
 		limit := uint64(mx * 1024 * 1024) //MB
 		var s runtime.MemStats
-		for ls.stop == 0 {
+		for atomic.LoadInt32(&ls.stop) == 0 {
 			runtime.ReadMemStats(&s)
 			if s.Alloc >= limit {
 				fmt.Println("out of memory")
