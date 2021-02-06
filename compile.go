@@ -414,7 +414,7 @@ func (fc *funcContext) ConstIndex(value LValue) int {
 
 func (fc *funcContext) RegisterLocalVar(name string) int {
 	ret := fc.Block.LocalVars.Register(name, len(fc.Proto.DbgLocals))
-	fc.Proto.DbgLocals = append(fc.Proto.DbgLocals, &DbgLocalInfo{Name: name, StartPc: fc.Code.LastPC() + 1})
+	fc.Proto.DbgLocals = append(fc.Proto.DbgLocals, &DbgLocalInfo{Name: name, StartPc: fc.Code.pc})
 	fc.SetRegTop(fc.RegTop() + 1)
 	return ret
 }
